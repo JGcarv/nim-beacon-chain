@@ -485,6 +485,8 @@ proc getBlockRange*(
 
   o # Return the index of the first non-nil item in the output
 
+
+
 func getBlockBySlot*(pool: BlockPool, slot: Slot): BlockRef =
   ## Retrieves the first block in the current canonical chain
   ## with slot number less or equal to `slot`.
@@ -514,7 +516,7 @@ proc get*(pool: BlockPool, root: Eth2Digest): Option[BlockData] =
   else:
     none(BlockData)
 
-func getOrResolve*(pool: var BlockPool, root: Eth2Digest): BlockRef =
+proc getOrResolve*(pool: var BlockPool, root: Eth2Digest): BlockRef =
   ## Fetch a block ref, or nil if not found (will be added to list of
   ## blocks-to-resolve)
   result = pool.getRef(root)
@@ -837,7 +839,7 @@ proc updateHead*(pool: BlockPool, newHead: BlockRef) =
 
   doAssert (not finalizedHead.blck.isNil),
     "Block graph should always lead to a finalized block"
-
+  
   if finalizedHead != pool.finalizedHead:
     block: # Remove states, walking slot by slot
       discard
@@ -882,7 +884,6 @@ proc updateHead*(pool: BlockPool, newHead: BlockRef) =
 
     # Right now, the finalized blocks themselves are stil on the graph, can't we delete them as well?
     pool.db.pruneToPersistent(finalizedHead.blck.root)
-    
     pool.finalizedHead = finalizedHead
 
     
