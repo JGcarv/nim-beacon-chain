@@ -288,12 +288,14 @@ when const_preset == "minimal": # Too much stack space used on mainnet
         pool = BlockPool.init(db)
 
     timedTest "prune heads on finalization" & preset():
+      echo "O1111111111111111111"
       block:
         # Create a fork that will not be taken
         var
           blck = makeTestBlock(pool.headState.data.data, pool.head.blck.root)
         discard pool.add(hash_tree_root(blck.message), blck)
 
+      echo "FIIIIIIIRST"  
       for i in 0 ..< (SLOTS_PER_EPOCH * 6):
         if i == 1:
           # There are 2 heads now because of the fork at slot 1
@@ -308,6 +310,7 @@ when const_preset == "minimal": # Too much stack space used on mainnet
               pool.headState.data.data, pool.head.blck.root,
               pool.headState.data.data.slot, cache, {}))
         let added = pool.add(hash_tree_root(blck.message), blck)
+        echo "OPAA"
         pool.updateHead(added)
 
       check:
@@ -315,9 +318,11 @@ when const_preset == "minimal": # Too much stack space used on mainnet
         pool.head.justified.slot.compute_epoch_at_slot() == 5
         pool.tail.children.len == 1
       
+
       let
         pool2 = BlockPool.init(db)
 
+      echo "HERE"
       # check that the state reloaded from database resembles what we had before
       check:
         pool2.tail.root == pool.tail.root
@@ -330,21 +335,21 @@ when const_preset == "minimal": # Too much stack space used on mainnet
           hash_tree_root(pool.justifiedState.data.data)
       
      
-      # Check that we get correct block ranges from both finalized and non-finalized blocks
-      proc testBlockRange(root: Eth2Digest, startSlot: Slot, skip: Natural, blocks: var openArray[BlockRef]):bool =
-        let startPos =  pool.getBlockRange(pool.head.blck.root, startSlot, skip, blocks)
-        for i in startPos ..< blocks.len:
-          check:
-            blocks[i].slot == startSlot + uint64(skip * (i - startPos))
-        true
+      # # Check that we get correct block ranges from both finalized and non-finalized blocks
+      # proc testBlockRange(startSlot: Slot, skip: Natural, blocks: var openArray[BlockRef]):bool =
+      #   let startPos =  pool.getBlockRange(startSlot, skip, blocks)
+      #   for i in startPos ..< blocks.len:
+      #     check:
+      #       blocks[i].slot == startSlot + uint64(skip * (i - startPos))
+      #   true
 
-      var blocks1 : array[7, BlockRef]
-      var blocks2 : array[7, BlockRef]
-      var blocks3 : array[7, BlockRef]
-      check:
-        testBlockRange(pool.head.blck.root, Slot(1), Natural(2), blocks1) #all finalized
-        testBlockRange(pool.head.blck.root, Slot(26), Natural(2), blocks2) #some finalized some not
-        testBlockRange(pool.head.blck.root, Slot(39), Natural(2), blocks3) #none finalized
+      # var blocks1 : array[7, BlockRef]
+      # var blocks2 : array[7, BlockRef]
+      # var blocks3 : array[7, BlockRef]
+      # check:
+      #   testBlockRange( Slot(1), Natural(2), blocks1) #all finalized
+      #   testBlockRange( Slot(26), Natural(2), blocks2) #some finalized some not
+      #   testBlockRange( Slot(39), Natural(2), blocks3) #none finalized
 
        
       

@@ -883,9 +883,11 @@ proc updateHead*(pool: BlockPool, newHead: BlockRef) =
           cur.parent.children = @[cur]
 
     # Right now, the finalized blocks themselves are stil on the graph, can't we delete them as well?
+    info "befroe prune"
     pool.db.pruneToPersistent(finalizedHead.blck.root)
+    info "between"
     pool.finalizedHead = finalizedHead
-
+    info "changinh heads"
     
     let hlen = pool.heads.len
     for i in 0..<hlen:

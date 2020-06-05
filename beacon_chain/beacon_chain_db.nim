@@ -103,19 +103,19 @@ proc putHeadBlock*(db: BeaconChainDB, key: Eth2Digest) =
 proc putTailBlock*(db: BeaconChainDB, key: Eth2Digest) =
   db.backend.put(subkey(kTailBlock), key.data)
 
-proc get(db: BeaconChainDB, key: auto, T: typedesc): Option[T] =
+proc get(db: BeaconChainDB, key: auto, T: typedesc): Option[T] {.raises: [Defect].} =
   var res: Option[T]
-  discard db.backend.get(key) do (data: openArray[byte]):
-    try:
+  try:
+    discard db.backend.get(key) do (data: openArray[byte]):
       res = some(SSZ.decode(data, T))
-    except SerializationError:
-      # Please note that this is intentionally a normal assert.
-      # We consider this a hard failure in debug mode, because
-      # it suggests a corrupted database. Release builds "recover"
-      # from the situation by failing to deliver a result from the
-      # database.
-      assert false
-      error "Corrupt database entry", key, `type` = name(T)
+  except Exception:
+    # Please note that this is intentionally a normal assert.
+    # We consider this a hard failure in debug mode, because
+    # it suggests a corrupted database. Release builds "recover"
+    # from the situation by failing to deliver a result from the
+    # database.
+    assert false
+    error "Corrupt database entry", key, `type` = name(T)
   res
 
 proc getStateRoot*(db: BeaconChainDB, root: Eth2Digest, slot: Slot):
@@ -137,13 +137,13 @@ proc containsState*(
   db.backend.contains(subkey(BeaconState, key))
 
 
-proc read(fn: string, offset, len: uint64, T: type): Option[T] =
+proc read(fn: string, offset, len: uint64, T: type): Option[T] {.raises: [Defect].} =
   var res : Option[T]
-  fn.read(offset, len) do (data: openArray[byte]):
-    try:
+  try:
+    fn.read(offset, len) do (data: openArray[byte]):
       res = some(SSZ.decode(data, T))
-    except SerializationError:
-      discard
+  except Exception:
+    discard
   res
 
 proc getPersistentBlock*(db: BeaconChainDB, slot: Slot): Option[SignedBeaconBlock] =
@@ -167,17 +167,27 @@ proc putPersistentBlock*(db: BeaconChainDB, value: SignedBeaconBlock) =
     diff = int value.message.slot - headSlot
     missingSlots.add(repeat(byte(0),(diff - 1) * 8))
   
+  var outp = memoryOutput()
+  outp.append(missingSlots)
+  var sszw =  SszWriter.init(outp)
+  sszw.writeValue(available_off)
+  # sszw.writeValue(missingSlots)
+
   let key = SSZ.encode(available_off) 
   let val = SSZ.encode(value)
   let encoded_len = SSZ.encode(uint64 len(val))
-  
+
   db.backend.put(subkey(type Eth2Digest, hash_tree_root(value.message)), SSZ.encode(value.message.slot))
   db.persistent.put(missingSlots & key, encoded_len & val)
 
 proc getBlock*(db: BeaconChainDB, key: Eth2Digest): Option[SignedBeaconBlock] =
+  info "inside get block", k=key, ct=db.containsBlock(key)
   if(db.containsBlock(key)):
+    info "contains key"
     return db.get(subkey(SignedBeaconBlock, key), SignedBeaconBlock)
+  info "before getting slot"
   var slot = db.get(subkey(Eth2Digest, key), uint64)
+  info "slot is some", s=slot.isSome(), s=slot.get
   if slot.isSome():
     return db.getPersistentBlock(Slot(slot.get))
 
@@ -206,18 +216,23 @@ iterator getAncestors*(db: BeaconChainDB, root: Eth2Digest):
 
   var root = root
   while (let blck = db.getBlock(root); blck.isSome()):
+    info "53s"
     yield (root, blck.get())
+    info "inside whie", isS=blck.isSome(), r=root, pa=blck.get().message.parent_root, slot=blck.get().message.slot
     root = blck.get().message.parent_root
 
 proc pruneToPersistent*(db: BeaconChainDB, root: Eth2Digest) =
+  info "inside prune"
   var temp_root = newSeq[Eth2Digest](0)
   for root, blck in db.getAncestors(root):
+    info "for", b=blck.message.slot, r=root, pa=blck.message.parent_root, ct=db.containsBlock(root), ctpa=db.containsBlock(blck.message.parent_root)
     if(not db.containsBlock(root)):
+      info "does not contains"
       break
     temp_root.add(root)
-  
   for i in countdown(temp_root.len - 1, 0):
     let blck = db.getBlock(temp_root[i])
+    info "inside pruning", b=blck.get().message.slot, r=temp_root[i]
     if blck.isSome():
       db.putPersistentBlock(blck.get)
       db.delBlock(temp_root[i])
